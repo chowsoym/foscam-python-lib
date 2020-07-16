@@ -1,10 +1,10 @@
 """
 A module to exploit Foscam Foscam FI9821W/P/HD816W/P camera.
-
-2016-01-22 Python 3 update by https://github.com/markomanninen
 """
 
-# Python 3 support. Also print -> print().
+# Python 3 support.
+# Fixed and Code formated.
+
 try:
     from urllib import urlopen
 except ImportError:
@@ -13,51 +13,33 @@ try:
     from urllib import urlencode
 except ImportError:
     from urllib.parse import urlencode
-try:
-    from urllib import unquote
-except ImportError:
-    from urllib.parse import unquote
-
 import xml.etree.ElementTree as ET
 from threading import Thread
-try:
-    import ssl
-    ssl_enabled=True
-except ImportError:
-    ssl_enabled=False
-
-from collections import OrderedDict
 
 # Foscam error code.
-FOSCAM_SUCCESS           = 0
-ERROR_FOSCAM_FORMAT      = -1
-ERROR_FOSCAM_AUTH        = -2
-ERROR_FOSCAM_CMD         = -3  # Access deny. May the cmd is not supported.
-ERROR_FOSCAM_EXE         = -4  # CGI execute fail.
-ERROR_FOSCAM_TIMEOUT     = -5
-ERROR_FOSCAM_UNKNOWN     = -7  # -6 and -8 are reserved.
+FOSCAM_SUCCESS = 0
+ERROR_FOSCAM_FORMAT = -1
+ERROR_FOSCAM_AUTH = -2
+ERROR_FOSCAM_CMD = -3  # Access deny. May the cmd is not supported.
+ERROR_FOSCAM_EXE = -4  # CGI execute fail.
+ERROR_FOSCAM_TIMEOUT = -5
+ERROR_FOSCAM_UNKNOWN = -7  # -6 and -8 are reserved.
 ERROR_FOSCAM_UNAVAILABLE = -8  # Disconnected or not a cam.
 
-FTP_MODE_PASV            = 0
-FTP_MODE_PORT            = 1
-
-FTP_ADDR_FORMAT_ERROR    = -1
-FTP_CONNECT_ERROR        = -2
-FTP_LOGIN_ERROR          = -3
-FTP_DIR_ERROR            = -4
 
 class FoscamError(Exception):
-    def __init__(self, code ):
+    def __init__(self, code):
         super(FoscamError, self).__init__()
         self.code = int(code)
 
     def __str__(self):
-        return  'ErrorCode: %s' % self.code
+        return 'ErrorCode: %s' % self.code
+
 
 class FoscamCamera(object):
     '''A python implementation of the foscam HD816W'''
 
-    def __init__(self, host, port, usr, pwd, daemon=False, ssl=None, verbose=True):
+    def __init__(self, host, port, usr, pwd, daemon=False, verbose=True):
         '''
         If ``daemon`` is True, the command will be sent unblockedly.
         '''
@@ -67,12 +49,6 @@ class FoscamCamera(object):
         self.pwd = pwd
         self.daemon = daemon
         self.verbose = verbose
-        self.ssl = ssl
-        if ssl_enabled:
-            if port==443 and ssl is None:
-                self.ssl = True
-        if self.ssl is None:
-            self.ssl = False
 
     @property
     def url(self):
@@ -87,48 +63,34 @@ class FoscamCamera(object):
         if params:
             paramstr = urlencode(params)
             paramstr = '&' + paramstr if paramstr else ''
-        cmdurl = 'http://%s/cgi-bin/CGIProxy.fcgi?usr=%s&pwd=%s&cmd=%s%s' % (
-                                                                  self.url,
-                                                                  self.usr,
-                                                                  self.pwd,
-                                                                  cmd,
-                                                                  paramstr,
-                                                                  )
-        if self.ssl and ssl_enabled:
-            cmdurl = cmdurl.replace('http:','https:')
+        cmdurl = 'http://%s/cgi-bin/CGIProxy.fcgi?usr=%s&pwd=%s&cmd=%s%s' % (self.url, self.usr, self.pwd, cmd, paramstr)
 
         # Parse parameters from response string.
         if self.verbose:
-            print ('Send Foscam command: %s' % cmdurl)
+            print('Send Foscam command: %s' % cmdurl)
         try:
             raw_string = ''
-            if self.ssl and ssl_enabled:
-                gcontext = ssl.SSLContext(ssl.PROTOCOL_TLSv1)  # disable cert
-                raw_string = urlopen(cmdurl,context=gcontext, timeout=5).read()
-            else:
-                raw_string = urlopen(cmdurl,timeout=5).read()
+            raw_string = urlopen(cmdurl).read()
             if raw:
                 if self.verbose:
-                    print ('Returning raw Foscam response: len=%d' % len(raw_string))
+                    print('Returning raw Foscam response: len=%d' % len(raw_string))
                 return FOSCAM_SUCCESS, raw_string
             root = ET.fromstring(raw_string)
-        except:
+        except Exception:
             if self.verbose:
-                print ('Foscam exception: ' + raw_string)
+                print('Foscam exception: ' + raw_string)
             return ERROR_FOSCAM_UNAVAILABLE, None
         code = ERROR_FOSCAM_UNKNOWN
-        params = OrderedDict()
+        params = dict()
         for child in root.iter():
             if child.tag == 'result':
                 code = int(child.text)
 
             elif child.tag != 'CGI_Result':
-                if type(child.text) == str:
-                    child.text = unquote(child.text)
                 params[child.tag] = child.text
 
         if self.verbose:
-            print ('Received Foscam response: %s, %s' % (code, params))
+            print('Received Foscam response: %s, %s' % (code, params))
         return code, params
 
     def execute_command(self, cmd, params=None, callback=None, raw=False):
@@ -142,8 +104,7 @@ class FoscamCamera(object):
             return code, params
 
         if self.daemon:
-            t = Thread(target=execute_with_callbacks,
-                    args=(cmd, ), kwargs={'params':params, 'callback':callback, 'raw':raw})
+            t = Thread(target=execute_with_callbacks, args=(cmd, ), kwargs={'params': params, 'callback': callback, 'raw': raw})
             t.daemon = True
             t.start()
         else:
@@ -157,19 +118,12 @@ class FoscamCamera(object):
         '''
         return self.execute_command('getIPInfo', callback=callback)
 
-    def set_ip_info(self, is_dhcp, ip='', gate='', mask='',
-                                dns1='', dns2='', callback=None):
+    def set_ip_info(self, is_dhcp, ip='', gate='', mask='', dns1='', dns2='', callback=None):
         '''
         isDHCP: 0(False), 1(True)
         System will reboot automatically to take effect after call this CGI command.
         '''
-        params = {'isDHCP': is_dhcp,
-                  'ip': ip,
-                  'gate': gate,
-                  'mask': mask,
-                  'dns1': dns1,
-                  'dns2': dns2,
-                 }
+        params = {'isDHCP': is_dhcp, 'ip': ip, 'gate': gate, 'mask': mask, 'dns1': dns1, 'dns2': dns2}
 
         return self.execute_command('setIpInfo', params, callback=callback)
 
@@ -179,16 +133,11 @@ class FoscamCamera(object):
         '''
         return self.execute_command('getPortInfo', callback=callback)
 
-    def set_port_info(self, webport, mediaport, httpsport,
-                                      onvifport, callback=None):
+    def set_port_info(self, webport, mediaport, httpsport, onvifport, callback=None):
         '''
         Set http port and media port of camera.
         '''
-        params = {'webPort'   : webport,
-                  'mediaPort' : mediaport,
-                  'httpsPort' : httpsport,
-                  'onvifPort' : onvifport,
-                 }
+        params = {'webPort': webport, 'mediaPort': mediaport, 'httpsPort': httpsport, 'onvifPort': onvifport}
         return self.execute_command('setPortInfo', params, callback=callback)
 
     def refresh_wifi_list(self, callback=None):
@@ -207,33 +156,33 @@ class FoscamCamera(object):
         params = {'startNo': startno}
         return self.execute_command('getWifiList', params, callback=callback)
 
-    def set_wifi_setting(self, ssid, psk, isenable, isusewifi, nettype,
-                            encryptype, authmode, keyformat, defaultkey,
-                            key1='', key2='', key3='', key4='',
-                            key1len=64, key2len=64, key3len=64, key4len=64,
-                            callback=None):
+    def set_wifi_setting(
+        self, ssid, psk, isenable, isusewifi, nettype, encryptype, authmode, keyformat, defaultkey,
+        key1='', key2='', key3='', key4='', key1len=64, key2len=64, key3len=64, key4len=64, callback=None
+    ):
         '''
         Set wifi config.
         Camera will not connect to AP unless you enject your cable.
         '''
-        params = {'isEnable'   : isenable,
-                  'isUseWifi'  : isusewifi,
-                  'ssid'       : ssid,
-                  'netType'    : nettype,
-                  'encryptType': encryptype,
-                  'psk'        : psk,
-                  'authMode'   : authmode,
-                  'keyFormat'  : keyformat,
-                  'defaultKey' : defaultkey,
-                  'key1'       : key1,
-                  'key2'       : key2,
-                  'key3'       : key3,
-                  'key4'       : key4,
-                  'key1Len'    : key1len,
-                  'key2Len'    : key2len,
-                  'key3Len'    : key3len,
-                  'key4Len'    : key4len,
-                  }
+        params = {
+            'isEnable': isenable,
+            'isUseWifi': isusewifi,
+            'ssid': ssid,
+            'netType': nettype,
+            'encryptType': encryptype,
+            'psk': psk,
+            'authMode': authmode,
+            'keyFormat': keyformat,
+            'defaultKey': defaultkey,
+            'key1': key1,
+            'key2': key2,
+            'key3': key3,
+            'key4': key4,
+            'key1Len': key1len,
+            'key2Len': key2len,
+            'key3Len': key3len,
+            'key4Len': key4len,
+        }
         return self.execute_command('setWifiSetting', params, callback=callback)
 
     def get_wifi_config(self, callback=None):
@@ -262,18 +211,18 @@ class FoscamCamera(object):
         return self.execute_command('getDDNSConfig', callback=callback)
 
     def set_ddns_config(self, isenable, hostname, ddnsserver,
-                                        user, password, callback=None):
+                        user, password, callback=None):
         '''
         Set DDNS config.
         '''
-        params = {'isEnable': isenable,
-                  'hostName': hostname,
-                  'ddnsServer': ddnsserver,
-                  'user': user,
-                  'password': password,
-                 }
+        params = {
+            'isEnable': isenable,
+            'hostName': hostname,
+            'ddnsServer': ddnsserver,
+            'user': user,
+            'password': password,
+        }
         return self.execute_command('setDDNSConfig', params, callback=callback)
-
 
     # *************** AV Settings  ******************
 
@@ -286,12 +235,13 @@ class FoscamCamera(object):
     def set_sub_video_stream_type(self, format, callback=None):
         '''
         Set the stream fromat of sub stream.
-        Supported format: (1) H264 : 0
-                          (2) MotionJpeg 1
+        Supported format:
+            (1) H264 : 0
+            (2) MotionJpeg 1
         '''
         params = {'format': format}
         return self.execute_command('setSubVideoStreamType',
-                                        params, callback=callback)
+                                    params, callback=callback)
 
     def set_sub_stream_format(self, format, callback=None):
         '''
@@ -299,7 +249,7 @@ class FoscamCamera(object):
         '''
         params = {'format': format}
         return self.execute_command('setSubStreamFormat',
-                                        params, callback=callback)
+                                    params, callback=callback)
 
     def get_main_video_stream_type(self, callback=None):
         '''
@@ -313,7 +263,7 @@ class FoscamCamera(object):
         '''
         params = {'streamType': streamtype}
         return self.execute_command('setMainVideoStreamType',
-                                        params, callback=callback)
+                                    params, callback=callback)
 
     def get_video_stream_param(self, callback=None):
         '''
@@ -321,36 +271,39 @@ class FoscamCamera(object):
         '''
         return self.execute_command('getVideoStreamParam', callback=callback)
 
-    def set_video_stream_param(self, streamtype, resolution, bitrate,
-            framerate, gop, isvbr, callback=None):
+    def set_video_stream_param(
+        self, streamtype, resolution, bitrate,
+        framerate, gop, isvbr, callback=None
+    ):
         '''
         Set the video stream param of stream N
         streamtype(0~3): Stream N.
-        resolution(0~4): 0 720P,
-                         1 VGA(640*480),
-                         2 VGA(640*360),
-                         3 QVGA(320*240),
-                         4 QVGA(320*180).
+        resolution(0~4):0 720P,
+                        1 VGA(640*480),
+                        2 VGA(640*360),
+                        3 QVGA(320*240),
+                        4 QVGA(320*180).
         bitrate: Bit rate of stream type N(20480~2097152).
         framerate: Frame rate of stream type N.
         GOP: P frames between 1 frame of stream type N.
              The suggest value is: X * framerate.
         isvbr: 0(Not in use currently), 1(In use).
         '''
-        params = {'streamType': streamtype,
-                  'resolution': resolution,
-                  'bitRate'   : bitrate,
-                  'frameRate' : framerate,
-                  'GOP'       : gop,
-                  'isVBR'     : isvbr
-                 }
+        params = {
+            'streamType': streamtype,
+            'resolution': resolution,
+            'bitRate': bitrate,
+            'frameRate': framerate,
+            'GOP': gop,
+            'isVBR': isvbr
+        }
         return self.execute_command('setVideoStreamParam',
                                     params, callback=callback)
 
     def mirror_video(self, is_mirror, callback=None):
         '''
         Mirror video
-       ``is_mirror``: 0 not mirror, 1 mirror
+        ``is_mirror``: 0 not mirror, 1 mirror
         '''
         params = {'isMirror': is_mirror}
         return self.execute_command('mirrorVideo', params, callback=callback)
@@ -360,13 +313,12 @@ class FoscamCamera(object):
         Flip video
         ``is_flip``: 0 Not flip, 1 Flip
         '''
-        params = {'isFlip': is_flip }
+        params = {'isFlip': is_flip}
         return self.execute_command('flipVideo', params, callback=callback)
 
     def get_mirror_and_flip_setting(self, callback=None):
 
         return self.execute_command('getMirrorAndFlipSetting', None, callback=callback)
-
 
     # *************** User account ******************
 
@@ -374,19 +326,21 @@ class FoscamCamera(object):
         '''
         Change user name.
         '''
-        params = {'usrName': usrname,
-                  'newUsrName': newusrname,
-                 }
+        params = {
+            'usrName': usrname,
+            'newUsrName': newusrname,
+        }
         return self.execute_command('changeUserName', params, callback=callback)
 
     def change_password(self, usrname, oldpwd, newpwd, callback=None):
         '''
         Change password.
         '''
-        params = {'usrName': usrname,
-                  'oldPwd' : oldpwd,
-                  'newPwd' : newpwd,
-                 }
+        params = {
+            'usrName': usrname,
+            'oldPwd': oldpwd,
+            'newPwd': newpwd,
+        }
         return self.execute_command('changePassword',
                                     params, callback=callback)
 
@@ -398,27 +352,24 @@ class FoscamCamera(object):
         '''
         Set systeim time
         '''
-        if ntp_server not in ['time.nist.gov',
-                              'time.kriss.re.kr',
-                              'time.windows.com',
-                              'time.nuri.net',
-                             ]:
+        if ntp_server not in ['time.nist.gov', 'time.kriss.re.kr', 'time.windows.com', 'time.nuri.net']:
             raise ValueError('Unsupported ntpServer')
 
-        params = {'timeSource': time_source,
-                  'ntpServer' : ntp_server,
-                  'dateFormat': date_format,
-                  'timeFormat': time_format,
-                  'timeZone'  : time_zone,
-                  'isDst'     : is_dst,
-                  'dst'       : dst,
-                  'year'      : year,
-                  'mon'       : mon,
-                  'day'       : day,
-                  'hour'      : hour,
-                  'minute'    : minute,
-                  'sec'       : sec
-                 }
+        params = {
+            'timeSource': time_source,
+            'ntpServer': ntp_server,
+            'dateFormat': date_format,
+            'timeFormat': time_format,
+            'timeZone': time_zone,
+            'isDst': is_dst,
+            'dst': dst,
+            'year': year,
+            'mon': mon,
+            'day': day,
+            'hour': hour,
+            'minute': minute,
+            'sec': sec
+        }
 
         return self.execute_command('setSystemTime', params, callback=callback)
 
@@ -584,8 +535,8 @@ class FoscamCamera(object):
         '''
         Set the speed of PT
         '''
-        return self.execute_command('setPTZSpeed', {'speed':speed},
-                                         callback=callback)
+        return self.execute_command('setPTZSpeed', {'speed': speed},
+                                    callback=callback)
 
     def get_ptz_selftestmode(self, callback=None):
         '''
@@ -601,9 +552,9 @@ class FoscamCamera(object):
         mode = 1: After normal selftest, then goto presetpoint-appointed
         '''
         return self.execute_command('setPTZSelfTestMode',
-                                    {'mode':mode},
+                                    {'mode': mode},
                                     callback=callback
-                                   )
+                                    )
 
     def get_ptz_preset_point_list(self, callback=None):
         '''
@@ -611,8 +562,8 @@ class FoscamCamera(object):
         '''
         return self.execute_command('getPTZPresetPointList', {}, callback=callback)
 
-
     # *************** AV Function *******************
+
     def get_motion_detect_config(self, callback=None):
         '''
         Get motion detect config
@@ -630,60 +581,20 @@ class FoscamCamera(object):
         Get the current config and set the motion detection on or off
         '''
         result, current_config = self.get_motion_detect_config()
-        if result != FOSCAM_SUCCESS:
-            return result
         current_config['isEnable'] = enabled
         self.set_motion_detect_config(current_config)
-        return FOSCAM_SUCCESS
 
     def enable_motion_detection(self):
         '''
         Enable motion detection
         '''
-        result = self.set_motion_detection(1)
-        return result
+        self.set_motion_detection(1)
 
     def disable_motion_detection(self):
         '''
         disable motion detection
         '''
-        result = self.set_motion_detection(0)
-        return result
-
-    # These API calls support FI9900P devices, which use a different CGI command
-    def get_motion_detect_config1(self, callback=None):
-        '''
-        Get motion detect config
-        '''
-        return self.execute_command('getMotionDetectConfig1', callback=callback)
-
-    def set_motion_detect_config1(self, params, callback=None):
-        '''
-        Get motion detect config
-        '''
-        return self.execute_command('setMotionDetectConfig1', params, callback=callback)
-
-    def set_motion_detection1(self, enabled=1):
-        '''
-        Get the current config and set the motion detection on or off
-        '''
-        result, current_config = self.get_motion_detect_config1()
-        if result != FOSCAM_SUCCESS:
-            return result
-        current_config['isEnable'] = enabled
-        self.set_motion_detect_config1(current_config)
-
-    def enable_motion_detection1(self):
-        '''
-        Enable motion detection
-        '''
-        self.set_motion_detection1(1)
-
-    def disable_motion_detection1(self):
-        '''
-        disable motion detection
-        '''
-        self.set_motion_detection1(0)
+        self.set_motion_detection(0)
 
     def get_alarm_record_config(self, callback=None):
         '''
@@ -697,10 +608,11 @@ class FoscamCamera(object):
         Set alarm record config
         Return: set result(0-success, -1-error)
         '''
-        params = {'isEnablePreRecord': is_enable_prerecord,
-                  'preRecordSecs'    : prerecord_secs,
-                  'alarmRecordSecs'  : alarm_record_secs
-                 }
+        params = {
+            'isEnablePreRecord': is_enable_prerecord,
+            'preRecordSecs': prerecord_secs,
+            'alarmRecordSecs': alarm_record_secs
+        }
         return self.execute_command('setAlarmRecordConfig', params, callback=callback)
 
     def get_local_alarm_record_config(self, callback=None):
@@ -709,22 +621,26 @@ class FoscamCamera(object):
         '''
         return self.execute_command('getLocalAlarmRecordConfig', callback=callback)
 
-    def set_local_alarm_record_config(self, is_enable_local_alarm_record = 1,
-                                      local_alarm_record_secs = 30, callback=None):
+    def set_local_alarm_record_config(
+        self, is_enable_local_alarm_record=1, local_alarm_record_secs=30, callback=None
+    ):
         '''
         Set local alarm-record config
         `is_enable_local_alarm_record`: 0 disable, 1 enable
         '''
-        params = {'isEnableLocalAlarmRecord': is_enable_local_alarm_record,
-                  'localAlarmRecordSecs'    : local_alarm_record_secs}
+        params = {
+            'isEnableLocalAlarmRecord': is_enable_local_alarm_record,
+            'localAlarmRecordSecs': local_alarm_record_secs
+        }
         return self.execute_command('setLocalAlarmRecordConfig', params, callback=callback)
 
     def get_h264_frm_ref_mode(self, callback=None):
         '''
         Get grame shipping reference mode of H264 encode stream.
         Return args:
-                mode: 0 Normal reference mode
-                      1 Two frames are seprated by four skipping frames
+                mode:
+                    0 Normal reference mode
+                    1 Two frames are seprated by four skipping frames
         '''
         return self.execute_command('getH264FrmRefMode', callback=callback)
 
@@ -750,29 +666,30 @@ class FoscamCamera(object):
         '''
         return self.execute_command('getScheduleRecordConfig', callback=callback)
 
-    def set_schedule_record_config(self, is_enable, record_level,
-                                   space_full_mode, is_enable_audio,
-                                   schedule0 = 0, schedule1 = 0, schedule2 = 0,
-                                   schedule3 = 0, schedule4 = 0, schedule5 = 0,
-                                   schedule6 = 0, callback=None):
+    def set_schedule_record_config(
+        self, is_enable, record_level, space_full_mode, is_enable_audio,
+        schedule0=0, schedule1=0, schedule2=0, schedule3=0, schedule4=0,
+        schedule5=0, schedule6=0, callback=None
+    ):
         '''
         Set schedule record config.
         cmd: setScheduleRecordConfig
         args: See docstring of meth::get_schedule_record_config
         '''
 
-        params = {'isEnable'     : is_enable,
-                  'isEnableAudio': is_enable_audio,
-                  'recordLevel'  : record_level,
-                  'spaceFullMode': space_full_mode,
-                  'schedule0'    : schedule0,
-                  'schedule1'    : schedule1,
-                  'schedule2'    : schedule2,
-                  'schedule3'    : schedule3,
-                  'schedule4'    : schedule4,
-                  'schedule5'    : schedule5,
-                  'schedule6'    : schedule6,
-                  }
+        params = {
+            'isEnable': is_enable,
+            'isEnableAudio': is_enable_audio,
+            'recordLevel': record_level,
+            'spaceFullMode': space_full_mode,
+            'schedule0': schedule0,
+            'schedule1': schedule1,
+            'schedule2': schedule2,
+            'schedule3': schedule3,
+            'schedule4': schedule4,
+            'schedule5': schedule5,
+            'schedule6': schedule6,
+        }
         return self.execute_command('setScheduleRecordConfig', params, callback=callback)
 
     def get_record_path(self, callback=None):
@@ -791,7 +708,7 @@ class FoscamCamera(object):
         Set Record path: sd/ftp
         cmd: setRecordPath
         param:
-             path: (0,SD), (2, FTP)
+            path: (0,SD), (2, FTP)
         '''
         params = {'Path': path}
         return self.execute_command('setRecordPath', params, callback=callback)
@@ -805,54 +722,6 @@ class FoscamCamera(object):
         '''
         return self.execute_command('snapPicture2', {}, callback=callback, raw=True)
 
-    # ******************* SMTP Functions *********************
-
-    def set_smtp_config(self, params, callback=None):
-        '''
-        Set smtp settings using the array of parameters
-        '''
-        return self.execute_command('setSMTPConfig', params, callback=callback)
-
-    def get_smtp_config(self, callback=None):
-        '''
-        Get smtp settings using the array of parameters
-        '''
-        return self.execute_command('getSMTPConfig', callback=callback)
-
-    # ******************* FTP Functions *********************
-
-    def set_ftp_config_new(self, address, port, mode, username, password, callback=None):
-        '''
-        Set ftp settings using the array of parameters (PASV: 0, PORT: 1)
-        '''
-        encoded_password = ",".join([str(ord(x)) for x in list(password)])
-        params = {'ftpAddr': address,
-                  'ftpPort': str(port),
-                  'mode': str(port),
-                  'userName': username,
-                  'password': encoded_password
-                  }
-        return self.execute_command('setFtpConfigNew', params, callback=callback)
-
-    def get_ftp_config(self, callback=None):
-        '''
-        Get ftp settings using the array of parameters
-        '''
-        return self.execute_command('getFtpConfig', callback=callback)
-
-    def test_ftp_server_new(self, address, port, mode, username, password, callback=None):
-        '''
-        Get ftp settings using the array of parameters (PASV: 0, PORT: 1)
-        '''
-        encoded_password = ",".join([str(ord(x)) for x in list(password)])
-        params = {'ftpAddr': address,
-                  'ftpPort': str(port),
-                  'mode': str(port),
-                  'fptUserName': username,
-                  'ftpPassword': encoded_password
-                  }
-        return self.execute_command('testFtpServerNew', params, callback=callback)
-
     # ********************** Misc ****************************
 
     def get_log(self, offset, count=10, callback=None):
@@ -860,8 +729,8 @@ class FoscamCamera(object):
         Retrieve log records from camera.
         cmd: getLog
         param:
-           offset: log offset for first record
-           count: number of records to return
+            offset: log offset for first record
+            count: number of records to return
         '''
         params = {'offset': offset, 'count': count}
         return self.execute_command('getLog', params, callback=callback)
